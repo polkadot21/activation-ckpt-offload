@@ -3,7 +3,6 @@
 __pycache__/
 *.pyc
 *.pyo
-*.png
 *.html
 .DS_Store
 .pytest_cache/
