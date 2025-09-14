@@ -31,7 +31,8 @@ class _CheckpointBlockFn(torch.autograd.Function):
         ctx.mode = mode
         ctx.saved_gpu = None
         ctx.saved_cpu = None
-        ctx.event = None
+        ctx.event = None            # "compute reached end of block i"
+        ctx.copy_done = None        # "offload stream finished D2H of x_i"
         ctx.offload_stream = None
         ctx.profiler = profiler
         ctx.blk_idx = blk_idx
@@ -45,6 +46,14 @@ class _CheckpointBlockFn(torch.autograd.Function):
             if profiler is not None:
                 profiler.log(f"fwd/b{blk_idx}: saved_input[cpu_sync]")
         elif mode == OffloadMode.CPU_ASYNC:
+            # Async offload: D2H to PINNED host memory on a SEPARATE stream,
+            # ordered AFTER block-i compute via an event; compute can proceed to block i+1.
+            #
+            # An illustration to grasp the idea:
+            #   S^c (compute): [ block i ... ] -- record(ev) --> [ block i+1 ... ]
+            #   S^o (offload):               wait(ev) ----> [ D2H(x_i -> host) ] -- record(done)
+            # Backward will wait 'done' before using host_buf; record_stream ties x_i's
+            # GPU storage lifetime to S^o until the D2H completes.
             x_det = x.detach()
             host_buf = torch.empty_like(x_det, device="cpu", pin_memory=True)
             if x_det.is_cuda:
@@ -54,13 +63,26 @@ class _CheckpointBlockFn(torch.autograd.Function):
                     else torch.cuda.Stream()
                 )
                 current = torch.cuda.current_stream(device=device)
+
+                # Copy must start AFTER block-i has produced x_i
                 ev = torch.cuda.Event()
                 current.record_event(ev)
                 stream.wait_event(ev)
+
+                # Queue async D2H on the offload stream
                 with torch.cuda.stream(stream):
                     host_buf.copy_(x_det, non_blocking=True)
+
+                # Keeps the GPU storage alive until the D2H finishes
+                x_det.record_stream(stream)
+
+                # "copy finished", backward should wait on it
+                done = torch.cuda.Event()
+                stream.record_event(done)
+
                 ctx.offload_stream = stream
                 ctx.event = ev
+                ctx.copy_done = done
             else:
                 host_buf.copy_(x_det)
             ctx.saved_cpu = host_buf
@@ -88,7 +110,11 @@ class _CheckpointBlockFn(torch.autograd.Function):
         if mode == OffloadMode.NONE:
             x = ctx.saved_gpu
         else:
-            if ctx.event is not None:
+            # For ASYNC: the D2H finished before reading host_buf.
+            if (device.type == "cuda") and (getattr(ctx, "copy_done", None) is not None):
+                current = torch.cuda.current_stream(device=device)
+                current.wait_event(ctx.copy_done)
+            elif getattr(ctx, "event", None) is not None:
                 ctx.event.synchronize()
             x_cpu = ctx.saved_cpu
             x = (
@@ -112,6 +138,7 @@ class _CheckpointBlockFn(torch.autograd.Function):
         if profiler is not None:
             profiler.log(f"bwd/b{blk_idx}: done")
 
+        # (block, x, cu_seqlens, mode, offload_stream, profiler, blk_idx)
         return None, x.grad, None, None, None, None, None
 
 
