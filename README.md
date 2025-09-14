@@ -31,16 +31,23 @@ Just use Colab to reproduce.
 ## Quickstart with uv
 
 ```bash
-# 1) Install uv if you don't have it
+# 1) Pull code
+git clone https://github.com/polkadot21/activation-ckpt-offload.git
+cd activation-ckpt-offload
+
+# 2) Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2) Sync deps
+# 3) Sync deps
 uv sync
 
-# 3) Run a benchmark & save plots
-uv run -m activation_ckpt_offload --device cuda \
-  --total_tokens 12000 --num_layers 12 --hidden_dim 1024 --head_dim 64 \
-  --ff_dim 4096 --batch_size 48 --steps 3
+# 4) Run a benchmark & save plots
+# With CLI
+uv run -m activation_ckpt_offload --device cuda --total_tokens 12000 --num_layers 12 \
+  --hidden_dim 1024 --head_dim 64 --ff_dim 4096 --batch_size 48 --steps 3
+
+# Or with Makefile
+make run DEVICE=cuda TOKENS=12000 LAYERS=12 HIDDEN=1024 HEAD=64 FF=4096 BATCH=48 STEPS=3
 ```
 
 Outputs:
@@ -53,7 +60,7 @@ Outputs:
 
 ```bash
 # Colab cell
-%pip -q install "git+https://github.com/<YOUR_GH_USER>/activation-ckpt-offload.git"
+%pip -q install "git+https://github.com/polkadot21/activation-ckpt-offload.git"
 from activation_ckpt.colab import run_colab_demo
 run_colab_demo()  # runs benchmarks & timelines on CUDA if available
 ```
@@ -63,8 +70,8 @@ run_colab_demo()  # runs benchmarks & timelines on CUDA if available
 ## CLI
 
 ```bash
-uv run -m activation_ckpt --help
-uv run -m activation_ckpt --device cuda --total_tokens 12000 --num_layers 12 \
+uv run -m activation_ckpt_offload --help
+uv run -m activation_ckpt_offload --device cuda --total_tokens 12000 --num_layers 12 \
   --hidden_dim 1024 --head_dim 64 --ff_dim 4096 --batch_size 48 --steps 3
 ```
 
