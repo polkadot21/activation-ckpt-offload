@@ -102,6 +102,7 @@ def run_memory_timelines(args):
     traces: dict[str, list[tuple[float, float, str]]] = {}
 
     for mode, name in modes:
+        model = opt = loss = out = None
         model = make_model()
         opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
         prof = GpuMemProfiler(device)
