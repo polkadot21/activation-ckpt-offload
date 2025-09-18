@@ -61,7 +61,7 @@ Outputs:
 ```bash
 # Colab cell
 %pip -q install "git+https://github.com/polkadot21/activation-ckpt-offload.git"
-from activation_ckpt.colab import run_colab_demo
+from activation_ckpt_offload.colab import run_colab_demo
 run_colab_demo()  # runs benchmarks & timelines on CUDA if available
 ```
 
